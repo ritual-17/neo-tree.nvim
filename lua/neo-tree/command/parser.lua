@@ -45,6 +45,7 @@ M.setup = function(all_source_names)
     reveal_file = { type = M.PATH, stat_type = "file" },
     git_base = { type = M.REF },
     toggle = { type = M.FLAG },
+    focus_or_toggle = { type = M.FLAG },
     reveal = { type = M.FLAG },
     reveal_force_cwd = { type = M.FLAG },
     selector = { type = M.FLAG },

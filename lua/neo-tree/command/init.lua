@@ -5,7 +5,7 @@ local utils = require("neo-tree.utils")
 local renderer = require("neo-tree.ui.renderer")
 local inputs = require("neo-tree.ui.inputs")
 local completion = require("neo-tree.command.completion")
-local do_show_or_focus, handle_reveal
+local do_show_or_focus_or_toggle, handle_reveal
 
 local M = {
   complete_args = completion.complete_args,
@@ -20,29 +20,31 @@ M._last = {
 ---Executes a Neo-tree action from outside of a Neo-tree window,
 ---such as show, hide, navigate, etc.
 ---@param args table The action to execute. The table can have the following keys:
----  action = string   The action to execute, can be one of:
----                    "close",
----                    "focus", <-- default value
----                    "show",
----  source = string   The source to use for this action. This will default
----                    to the default_source specified in the user's config.
----                    Can be one of:
----                    "filesystem",
----                    "buffers",
----                    "git_status",
---                     "migrations"
----  position = string The position this action will affect. This will default
----                    to the the last used position or the position specified
----                    in the user's config for the given source. Can be one of:
----                    "left",
----                    "right",
----                    "float",
----                    "current"
----  toggle = boolean  Whether to toggle the visibility of the Neo-tree window.
----  reveal = boolean  Whether to reveal the current file in the Neo-tree window.
----  reveal_file = string The specific file to reveal.
----  dir = string      The root directory to set.
----  git_base = string The git base used for diff
+---  action = string             The action to execute, can be one of:
+---                              "close",
+---                              "focus", <-- default value
+---                              "show",
+---  source = string             The source to use for this action. This will default
+---                              to the default_source specified in the user's config.
+---                              Can be one of:
+---                              "filesystem",
+---                              "buffers",
+---                              "git_status",
+--                               "migrations"
+---  position = string           The position this action will affect. This will default
+---                              to the the last used position or the position specified
+---                              in the user's config for the given source. Can be one of:
+---                              "left",
+---                              "right",
+---                              "float",
+---                              "current"
+---  toggle = boolean            Whether to toggle the visibility of the Neo-tree window.
+---  toggle_or_focus = boolean   Whether to toggle the visibility of the Neo-tree window.
+---                              If it is already open but not focused, focus the Neo-tree window.
+---  reveal = boolean            Whether to reveal the current file in the Neo-tree window.
+---  reveal_file = string        The specific file to reveal.
+---  dir = string                The root directory to set.
+---  git_base = string           The git base used for diff
 M.execute = function(args)
   local nt = require("neo-tree")
   nt.ensure_config()
@@ -160,7 +162,7 @@ M.execute = function(args)
   if not args.dir then
     args.dir = state.path
   end
-  do_show_or_focus(args, state, force_navigate)
+  do_show_or_focus_or_toggle(args, state, force_navigate)
 end
 
 ---Parses and executes the command line. Use execute(args) instead.
@@ -170,8 +172,9 @@ M._command = function(...)
   M.execute(args)
 end
 
-do_show_or_focus = function(args, state, force_navigate)
+do_show_or_focus_or_toggle = function(args, state, force_navigate)
   local window_exists = renderer.window_exists(state)
+  local current_win = vim.api.nvim_get_current_win()
   local function close_other_sources()
     if not window_exists then
       -- Clear the space in case another source is already open
@@ -182,6 +185,13 @@ do_show_or_focus = function(args, state, force_navigate)
     end
   end
 
+  -- "focus_or_toggle" means if the window is already focused, close it, otherwise
+  -- it will default to show or focus below.
+  if args.focus_or_toggle and window_exists and state.winid == current_win then
+    renderer.close(state)
+    return
+  end
+
   if args.action == "show" then
     -- "show" means show the window without focusing it
     if window_exists and not force_navigate then
@@ -189,13 +199,12 @@ do_show_or_focus = function(args, state, force_navigate)
       return
     end
     -- close_other_sources()
-    local current_win = vim.api.nvim_get_current_win()
     manager.navigate(state, args.dir, args.reveal_file, function()
       -- navigate changes the window to neo-tree, so just quickly hop back to the original window
       vim.api.nvim_set_current_win(current_win)
     end, false)
   elseif args.action == "focus" then
-    -- "focus" mean open and jump to the window if closed, and just focus it if already opened
+    -- "focus" means open and jump to the window if closed, and just focus it if already opened
     if window_exists then
       vim.api.nvim_set_current_win(state.winid)
     end
@@ -212,21 +221,21 @@ handle_reveal = function(args, state)
   local cwd = args.dir or state.path or manager.get_cwd(state)
   if utils.is_subpath(cwd, args.reveal_file) then
     args.dir = cwd
-    do_show_or_focus(args, state, true)
+    do_show_or_focus_or_toggle(args, state, true)
     return
   end
 
   local reveal_file_parent, _ = utils.split_path(args.reveal_file) --[[@as string]]
   if args.reveal_force_cwd then
     args.dir = reveal_file_parent
-    do_show_or_focus(args, state, true)
+    do_show_or_focus_or_toggle(args, state, true)
     return
   end
 
   -- if dir doesn't have the reveal_file, ignore the reveal_file
   if args.dir then
     args.reveal_file = nil
-    do_show_or_focus(args, state, true)
+    do_show_or_focus_or_toggle(args, state, true)
     return
   end
 
@@ -237,7 +246,7 @@ handle_reveal = function(args, state)
     else
       args.reveal_file = nil
     end
-    do_show_or_focus(args, state, true)
+    do_show_or_focus_or_toggle(args, state, true)
   end)
 end
 
